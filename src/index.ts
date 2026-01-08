@@ -23,11 +23,12 @@ app.get("/", (c) => {
 });
 
 /** router 설정 */
-
+import userRouter from "./router/user_router.js";
 import testRouter from "./router/test_router.js";
 import { HonoEnv } from "./types/types.js";
 
 app.route("/api/test", testRouter);
+app.route("/api/user", userRouter);
 /** router 설정 END */
 
 serve(
