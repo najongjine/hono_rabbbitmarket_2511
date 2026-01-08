@@ -31,7 +31,43 @@ router.post("/formdata_body", async (c) => {
 
     let files = body["files"];
 
-    const strdata1 = body["strdata1"];
+    let nickname = String(body["nickname"] || "");
+    nickname = nickname?.trim() || "";
+    let phone_number = String(body["phone_number"] || "");
+    phone_number = phone_number?.trim() || "";
+    let addr = String(body["addr"] || "");
+    addr = addr?.trim() || "";
+    let long = Number(body["long"] || 0);
+    let lat = Number(body["lat"] || 0);
+
+    const query = `
+      INSERT INTO t_user (
+        nickname, 
+        phone_number, 
+        addr, 
+        long, 
+        lat, 
+        geo_point, 
+        created_dt, 
+        updated_dt
+      ) VALUES (
+        $1, 
+        $2, 
+        $3, 
+        $4, 
+        $5, 
+        ST_SetSRID(ST_MakePoint($4, $5), 4326), 
+        NOW(), 
+        NOW()
+      )
+      RETURNING *;
+    `;
+
+    // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
+    const values = [nickname, phone_number, addr, long, lat];
+
+    // 4. 실행
+    const result = await db.query(query, values);
 
     if (!Array.isArray(files)) {
       files = [files];
@@ -65,11 +101,6 @@ router.post("/formdata_body", async (c) => {
       })
     );
 
-    result.data = {
-      strdata1: strdata1,
-      fileInfos: fileInfos,
-      fileData: fileData,
-    };
     return c.json(result);
   } catch (error: any) {
     result.success = false;
