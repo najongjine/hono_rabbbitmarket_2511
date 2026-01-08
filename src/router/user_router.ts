@@ -27,6 +27,7 @@ router.get("/query_string", async (c) => {
 router.post("/formdata_body", async (c) => {
   let result: ResultType = { success: true };
   try {
+    const db = c.var.db;
     const body = await c.req.parseBody({ all: true });
 
     let files = body["files"];
@@ -47,18 +48,14 @@ router.post("/formdata_body", async (c) => {
         addr, 
         long, 
         lat, 
-        geo_point, 
-        created_dt, 
-        updated_dt
+        geo_point
       ) VALUES (
         $1, 
         $2, 
         $3, 
         $4, 
         $5, 
-        ST_SetSRID(ST_MakePoint($4, $5), 4326), 
-        NOW(), 
-        NOW()
+        ST_SetSRID(ST_MakePoint($4, $5), 4326)
       )
       RETURNING *;
     `;
