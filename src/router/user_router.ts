@@ -36,10 +36,37 @@ router.post("/formdata_body", async (c) => {
     nickname = nickname?.trim() || "";
     let phone_number = String(body["phone_number"] || "");
     phone_number = phone_number?.trim() || "";
-    let addr = String(body["addr"] || "");
-    addr = addr?.trim() || "";
-    let long = Number(body["long"] || 0);
-    let lat = Number(body["lat"] || 0);
+
+    let long = String(body["long"] || 0);
+    let lat = String(body["lat"] || 0);
+
+    // 3. 카카오 API 호출 URL 생성
+    const params = new URLSearchParams({
+      x: long, // longitude
+      y: lat, // lat
+      input_coord: "WGS84", // 기본값이지만 명시적으로 지정
+    });
+
+    const url = `https://dapi.kakao.com/v2/local/geo/coord2address.json?${params.toString()}`;
+
+    // 4. fetch로 API 요청
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        // 주의: 'KakaoAK ' 뒤에 공백이 한 칸 있어야 합니다.
+        Authorization: `KakaoAK ${process?.env?.KAKAO_RESTAPI_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Kakao API Error: ${response.status} ${response.statusText}`
+      );
+    }
+
+    // 5. 응답 데이터를 타입에 맞춰 파싱
+    const data = (await response.json()) as KakaoAddressResponse;
 
     const query = `
       INSERT INTO t_user (
