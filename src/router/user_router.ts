@@ -210,8 +210,8 @@ router.post("/register", async (c) => {
       if (dataId) {
         const query = `
           UPDATE t_user SET
-          profile_img = $1,
-          updated_dt=NOW()
+            profile_img = $1,
+            updated_dt=NOW()
           WHERE id=$2
           RETURNING *;
     `;
