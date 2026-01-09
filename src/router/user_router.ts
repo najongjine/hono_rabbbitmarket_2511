@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { HonoEnv, KakaoAddressResponse } from "../types/types.js";
+import {
+  HonoEnv,
+  ImgBBUploadResult,
+  KakaoAddressResponse,
+} from "../types/types.js";
 import { hashPassword } from "../utils/utils.js";
 
 const router = new Hono<HonoEnv>();
@@ -123,38 +127,83 @@ router.post("/register", async (c) => {
     const dbresult = await db.query(query, values);
     console.log(`dbresult: `, dbresult);
 
+    let uploadedUrls: string[] = [];
+    let uploadResults: ImgBBUploadResult[] = [];
+    const IMGBB_API_KEY = String(process?.env?.IMGBB_API_KEY || "");
     if (files) {
       if (!Array.isArray(files)) {
         files = [files];
       }
-      const fileInfos = files.map((f: any) => ({
-        name: f.name, // 파일명
-        size: f.size, // 파일 크기
-        type: f.type, // 파일 타입 (MIME)
-      }));
 
-      // 3. 각 파일을 Binary(Buffer)로 변환
-      // map 내에서 await를 써야 하므로 Promise.all 사용
-      const fileData = await Promise.all(
-        files.map(async (file: any) => {
-          // (핵심) Web Standard File -> ArrayBuffer -> Node.js Buffer 변환
-          const arrayBuffer = await file.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
+      // Promise.all의 결과를 외부 변수 uploadResults에 할당
+      uploadResults = await Promise.all(
+        files.map(async (file: any): Promise<ImgBBUploadResult> => {
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const base64Image = buffer.toString("base64");
 
-          // 이제 'buffer' 변수에는 실제 바이너리 데이터가 들어있습니다.
-          // (예: fs.writeFileSync('save.png', buffer) 등으로 저장 가능)
+            const formData = new FormData();
+            formData.append("key", IMGBB_API_KEY);
+            formData.append("image", base64Image);
+            formData.append("name", file.name);
 
-          return {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            // JSON으로 확인하기 위해 바이너리를 Base64 문자열로 살짝 보여줌
-            binaryPreview: buffer.toString("base64").substring(0, 50) + "...",
-            // 혹은 Hex 코드로 확인
-            hexPreview: buffer.toString("hex").substring(0, 20) + "...",
-          };
+            const response = await fetch("https://api.imgbb.com/1/upload", {
+              method: "POST",
+              body: formData,
+            });
+
+            const result: any = await response.json();
+
+            if (result.success) {
+              return {
+                status: "success",
+                filename: file.name,
+                url: result.data.url,
+                delete_url: result.data.delete_url,
+              };
+            } else {
+              console.error(`ImgBB Upload Error for ${file.name}:`, result);
+              return {
+                status: "fail",
+                filename: file.name,
+                error: result.error?.message || "Unknown error",
+              };
+            }
+          } catch (error) {
+            console.error("Network or Parsing Error:", error);
+            return {
+              status: "error",
+              filename: file.name,
+              error: String(error),
+            };
+          }
         })
       );
+
+      // 성공한 URL만 따로 모으기 (필요 시)
+      uploadedUrls = uploadResults
+        .filter((r) => r.status === "success" && r.url)
+        .map((r) => r.url as string);
+    }
+
+    // ---------------------------------------------------------
+    // 4. 이제 if 문 밖에서도 결과(uploadResults)를 확인하고 예외처리 가능합니다.
+    // ---------------------------------------------------------
+
+    console.log("전체 결과 상세:", uploadResults);
+    console.log("성공한 URL 목록:", uploadedUrls);
+
+    // 예: 하나라도 실패한 게 있는지 체크하고 싶을 때
+    const failedUploads = uploadResults.filter((r) => r.status !== "success");
+
+    if (failedUploads.length > 0) {
+      console.warn("일부 이미지 업로드 실패:", failedUploads);
+      // 여기서 클라이언트에게 실패 알림을 보내거나 재시도 로직을 짤 수 있음
+    }
+
+    if (uploadResults.length === 0 && files) {
+      // 파일은 있었는데 결과가 비어있는 이상 케이스 등 처리
     }
 
     return c.json(result);

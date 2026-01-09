@@ -42,3 +42,11 @@ export interface KakaoAddressResponse {
     } | null;
   }[];
 }
+
+export interface ImgBBUploadResult {
+  status: "success" | "fail" | "error";
+  filename: string;
+  url?: string; // 성공 시 존재
+  delete_url?: string; // 성공 시 존재
+  error?: string; // 실패/에러 시 존재
+}
