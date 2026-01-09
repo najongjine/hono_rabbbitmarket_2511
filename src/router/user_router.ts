@@ -73,6 +73,9 @@ router.post("/register", async (c) => {
     const data = (await response.json()) as KakaoAddressResponse;
     let addr = data.documents[0].road_address?.address_name || "";
     if (!addr) {
+      addr = data.documents[0].address?.address_name || "";
+    }
+    if (!addr) {
       result.success = false;
       result.msg = `kakao 주소 못받음`;
       return c.json(result);
