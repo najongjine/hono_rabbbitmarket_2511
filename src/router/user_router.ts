@@ -205,6 +205,21 @@ router.post("/register", async (c) => {
     if (uploadResults.length === 0 && files) {
       // 파일은 있었는데 결과가 비어있는 이상 케이스 등 처리
     }
+    if ((uploadResults?.length || 0) && (dbresult?.rows?.length || 0)) {
+      let dataId = dbresult?.rows[0]?.id || 0;
+      if (dataId) {
+        const query = `
+          UPDATE ...
+          RETURNING *;
+    `;
+
+        // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
+        const values = [dataId];
+
+        // 4. 실행
+        const dbresult2 = await db.query(query, values);
+      }
+    }
 
     return c.json(result);
   } catch (error: any) {
