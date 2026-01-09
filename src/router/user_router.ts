@@ -44,7 +44,6 @@ router.post("/formdata_body", async (c) => {
     const params = new URLSearchParams({
       x: long, // longitude
       y: lat, // lat
-      input_coord: "WGS84", // 기본값이지만 명시적으로 지정
     });
 
     const url = `https://dapi.kakao.com/v2/local/geo/coord2address.json?${params.toString()}`;
