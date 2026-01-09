@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { HonoEnv, KakaoAddressResponse } from "../types/types.js";
+import { hashPassword } from "../utils/utils.js";
 
 const router = new Hono<HonoEnv>();
 
@@ -24,7 +25,7 @@ router.get("/query_string", async (c) => {
 });
 
 /** 큰 데이터 받는 방법. 이거를 제일 많이 씀 */
-router.post("/formdata_body", async (c) => {
+router.post("/register", async (c) => {
   let result: ResultType = { success: true };
   try {
     const db = c.var.db;
@@ -32,6 +33,10 @@ router.post("/formdata_body", async (c) => {
 
     let files = body["files"];
 
+    let username = String(body["username"] || "");
+    username = username?.trim() || "";
+    let password = String(body["password"] || "");
+    password = password?.trim() || "";
     let nickname = String(body["nickname"] || "");
     nickname = nickname?.trim() || "";
     let phone_number = String(body["phone_number"] || "");
@@ -73,6 +78,8 @@ router.post("/formdata_body", async (c) => {
       return c.json(result);
     }
 
+    password = await hashPassword(password);
+
     const query = `
       INSERT INTO t_user (
         nickname, 
@@ -80,20 +87,32 @@ router.post("/formdata_body", async (c) => {
         addr, 
         long, 
         lat, 
-        geo_point
+        geo_point,
+        username,
+        password
       ) VALUES (
         $1, 
         $2, 
         $3, 
         $4, 
         $5, 
-        ST_SetSRID(ST_MakePoint($4, $5), 4326)
+        ST_SetSRID(ST_MakePoint($4, $5), 4326),
+        $6,
+        $7
       )
       RETURNING *;
     `;
 
     // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
-    const values = [nickname, phone_number, addr, long, lat];
+    const values = [
+      nickname,
+      phone_number,
+      addr,
+      long,
+      lat,
+      username,
+      password,
+    ];
 
     // 4. 실행
     const dbresult = await db.query(query, values);
