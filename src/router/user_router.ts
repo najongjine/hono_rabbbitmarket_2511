@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { HonoEnv } from "../types/types.js";
+import { HonoEnv, KakaoAddressResponse } from "../types/types.js";
 
 const router = new Hono<HonoEnv>();
 
@@ -66,6 +66,12 @@ router.post("/formdata_body", async (c) => {
 
     // 5. 응답 데이터를 타입에 맞춰 파싱
     const data = (await response.json()) as KakaoAddressResponse;
+    let addr = data.documents[0].road_address?.address_name || "";
+    if (!addr) {
+      result.success = false;
+      result.msg = `kakao 주소 못받음`;
+      return c.json(result);
+    }
 
     const query = `
       INSERT INTO t_user (
@@ -90,7 +96,7 @@ router.post("/formdata_body", async (c) => {
     const values = [nickname, phone_number, addr, long, lat];
 
     // 4. 실행
-    const result = await db.query(query, values);
+    const dbresult = await db.query(query, values);
 
     if (!Array.isArray(files)) {
       files = [files];
