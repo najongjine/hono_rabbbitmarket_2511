@@ -4,7 +4,7 @@ import {
   ImgBBUploadResult,
   KakaoAddressResponse,
 } from "../types/types.js";
-import { hashPassword } from "../utils/utils.js";
+import { encryptData, generateToken, hashPassword } from "../utils/utils.js";
 
 const router = new Hono<HonoEnv>();
 
@@ -188,6 +188,34 @@ router.post("/register", async (c) => {
         const dbresult2 = await db.query(query, values);
       }
     }
+
+    const query3 = `
+          SELECT
+          u.id
+          ,u.nickname
+          ,u.phone_number
+          ,u.profile_img
+          ,u.addr
+          ,u.geo_point
+          ,u.long
+          ,u.lat
+          ,u.created_dt
+          ,u.updated_dt
+          ,u.username
+          FROM t_user as u
+          WHERE u.id = 
+          RETURNING *;
+    `;
+
+    // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
+    const values3 = [uploadedUrls[0], dbresult?.rows[0]?.id || 0];
+
+    // 4. 실행
+    let user: any = await db.query(query, values);
+    user = dbresult?.rows[0] || {};
+    let encUser = encryptData(JSON.stringify(user));
+    let token = `Bearer ${generateToken(encUser, "999d")}`;
+    result.data = { user: user, token: token };
 
     return c.json(result);
   } catch (error: any) {
