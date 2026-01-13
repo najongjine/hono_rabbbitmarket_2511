@@ -215,7 +215,7 @@ router.post("/register", async (c) => {
     user = dbresult?.rows[0] || {};
     let encUser = encryptData(JSON.stringify(user));
     let token = `Bearer ${generateToken(encUser, "999d")}`;
-    result.data = { user: user, token: token };
+    result.data = { userInfo: user, token: token };
 
     return c.json(result);
   } catch (error: any) {
