@@ -207,7 +207,7 @@ router.post("/register", async (c) => {
           ,u.username
           FROM t_user as u
           WHERE u.id = $1
-          RETURNING *;
+          ;
     `;
 
     // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
@@ -258,7 +258,7 @@ router.post("/login", async (c) => {
           ,u.password
           FROM t_user as u
           WHERE u.username = $1
-          RETURNING *;
+          ;
     `;
 
     // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
