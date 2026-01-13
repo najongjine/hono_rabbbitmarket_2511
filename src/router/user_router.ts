@@ -203,12 +203,12 @@ router.post("/register", async (c) => {
           ,u.updated_dt
           ,u.username
           FROM t_user as u
-          WHERE u.id = 
+          WHERE u.id = $1
           RETURNING *;
     `;
 
     // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
-    const values3 = [uploadedUrls[0], dbresult?.rows[0]?.id || 0];
+    const values3 = [dbresult?.rows[0]?.id || 0];
 
     // 4. 실행
     let user: any = await db.query(query, values);
