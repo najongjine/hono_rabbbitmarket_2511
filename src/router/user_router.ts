@@ -214,7 +214,7 @@ router.post("/register", async (c) => {
     console.log(`user : `, user);
     let encUser = encryptData(JSON.stringify(user));
     console.log(`encUser : `, encUser);
-    let token = `Bearer ${generateToken(encUser, "999d")}`;
+    let token = `Bearer ${generateToken({ data: encUser }, "999d")}`;
     console.log(`token : `, token);
     result.data = { userInfo: user, token: token };
 
