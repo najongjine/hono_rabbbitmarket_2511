@@ -52,7 +52,6 @@ router.post("/register", async (c) => {
     let lat = String(body["lat"] || 0);
 
     password = await hashPassword(password);
-    console.log(`password: `, password);
 
     const query = `
       INSERT INTO t_user (
@@ -90,7 +89,6 @@ router.post("/register", async (c) => {
 
     // 4. 실행
     const dbresult = await db.query(query, values);
-    console.log(`dbresult: `, dbresult);
 
     let uploadedUrls: string[] = [];
     let uploadResults: ImgBBUploadResult[] = [];
@@ -213,8 +211,11 @@ router.post("/register", async (c) => {
     // 4. 실행
     let user: any = await db.query(query, values);
     user = dbresult?.rows[0] || {};
+    console.log(`user : `, user);
     let encUser = encryptData(JSON.stringify(user));
+    console.log(`encUser : `, encUser);
     let token = `Bearer ${generateToken(encUser, "999d")}`;
+    console.log(`token : `, token);
     result.data = { userInfo: user, token: token };
 
     return c.json(result);

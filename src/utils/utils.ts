@@ -14,6 +14,12 @@ const ENCRYPTION_KEY =
   process.env.ENCRYPTION_KEY || "your_32_byte_encryption_key_123456"; // 32 bytes
 const IV_LENGTH = 16; // AES block size
 
+const getFixedKey = (key: string): Buffer => {
+  // 1. padEnd(32, '0'): 32자보다 짧으면 뒤를 '0'으로 채움
+  // 2. slice(0, 32): 32자보다 길면 앞 32자만 남기고 자름
+  return Buffer.from(key.padEnd(32, "0").slice(0, 32));
+};
+
 // 단방향 암호화: 비밀번호 해시 생성
 export const hashPassword = async (password: string): Promise<string> => {
   const saltRounds = 10;
@@ -33,7 +39,7 @@ export const encryptData = (data: string): string => {
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(
     "aes-256-cbc",
-    Buffer.from(ENCRYPTION_KEY),
+    getFixedKey(ENCRYPTION_KEY), // 수정됨: 여기서 길이를 맞춘 키를 사용
     iv
   );
   let encrypted = cipher.update(data);
@@ -48,7 +54,7 @@ export const decryptData = (encryptedData: string): string => {
   const encryptedText = Buffer.from(parts[1], "hex");
   const decipher = crypto.createDecipheriv(
     "aes-256-cbc",
-    Buffer.from(ENCRYPTION_KEY),
+    getFixedKey(ENCRYPTION_KEY), // 수정됨: 여기서 길이를 맞춘 키를 사용
     iv
   );
   let decrypted = decipher.update(encryptedText);
