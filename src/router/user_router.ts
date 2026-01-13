@@ -209,8 +209,63 @@ router.post("/register", async (c) => {
     const values3 = [dbresult?.rows[0]?.id || 0];
 
     // 4. 실행
-    let user: any = await db.query(query, values);
-    user = dbresult?.rows[0] || {};
+    let user: any = await db.query(query3, values3);
+    user = user?.rows[0] || {};
+    console.log(`user : `, user);
+    let encUser = encryptData(JSON.stringify(user));
+    console.log(`encUser : `, encUser);
+    let token = `Bearer ${generateToken({ data: encUser }, "999d")}`;
+    console.log(`token : `, token);
+    result.data = { userInfo: user, token: token };
+
+    return c.json(result);
+  } catch (error: any) {
+    result.success = false;
+    result.msg = `!server error. ${error?.message ?? ""}`;
+    return c.json(result);
+  }
+});
+
+router.post("/login", async (c) => {
+  let result: ResultType = { success: true };
+  try {
+    const db = c.var.db;
+    const body = await c.req.parseBody({ all: true });
+
+    let username = String(body["username"] || "");
+    username = username?.trim() || "";
+    let password = String(body["password"] || "");
+    password = password?.trim() || "";
+
+    const query3 = `
+          SELECT
+          u.id
+          ,u.nickname
+          ,u.phone_number
+          ,u.profile_img
+          ,u.addr
+          ,u.geo_point
+          ,u.long
+          ,u.lat
+          ,u.created_dt
+          ,u.updated_dt
+          ,u.username
+          FROM t_user as u
+          WHERE u.username = $1
+          RETURNING *;
+    `;
+
+    // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
+    const values3 = [username];
+
+    // 4. 실행
+    let user: any = await db.query(query3, values3);
+    user = user?.rows[0] || {};
+    if (!user?.id) {
+      result.success = false;
+      result.msg = `!유저를 못찾았습니다`;
+      return c.json(result);
+    }
     console.log(`user : `, user);
     let encUser = encryptData(JSON.stringify(user));
     console.log(`encUser : `, encUser);
