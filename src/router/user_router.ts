@@ -4,7 +4,12 @@ import {
   ImgBBUploadResult,
   KakaoAddressResponse,
 } from "../types/types.js";
-import { encryptData, generateToken, hashPassword } from "../utils/utils.js";
+import {
+  comparePassword,
+  encryptData,
+  generateToken,
+  hashPassword,
+} from "../utils/utils.js";
 
 const router = new Hono<HonoEnv>();
 
@@ -250,6 +255,7 @@ router.post("/login", async (c) => {
           ,u.created_dt
           ,u.updated_dt
           ,u.username
+          ,u.password
           FROM t_user as u
           WHERE u.username = $1
           RETURNING *;
@@ -266,7 +272,15 @@ router.post("/login", async (c) => {
       result.msg = `!유저를 못찾았습니다`;
       return c.json(result);
     }
+
     console.log(`user : `, user);
+    let passwordCompare = await comparePassword(password, user?.password || "");
+    if (!password) {
+      result.success = false;
+      result.msg = `!유저를 못찾았습니다`;
+      return c.json(result);
+    }
+
     let encUser = encryptData(JSON.stringify(user));
     console.log(`encUser : `, encUser);
     let token = `Bearer ${generateToken({ data: encUser }, "999d")}`;
