@@ -73,58 +73,54 @@ router.post("/upsert_item", async (c) => {
 
     let files = body["files"];
 
-    let username = String(body["username"] || "");
-    username = username?.trim() || "";
-    let password = String(body["password"] || "");
-    password = password?.trim() || "";
-    let nickname = String(body["nickname"] || "");
-    nickname = nickname?.trim() || "";
-    let phone_number = String(body["phone_number"] || "");
-    phone_number = phone_number?.trim() || "";
-    let addr = String(body["addr"] || "");
-    addr = addr?.trim() || "";
+    let category_id = Number(body["category_id"] || 0);
+    let item_id = Number(body["item_id"] || 0);
+    let title = String(body["title"] || "");
+    title = title?.trim() || "";
+    let content = String(body["content"] || "");
+    content = content?.trim() || "";
+    let price = Number(body["price"] || 0);
 
-    let long = String(body["long"] || 0);
-    let lat = String(body["lat"] || 0);
+    // [1단계] item_id가 있다면(수정 모드라면), 먼저 DB 찔러서 확인
+    if (item_id > 0) {
+      const checkQuery = `SELECT * FROM t_item 
+      WHERE id = $1 AND user_id = $2`;
+      const checkResult = await db.query(checkQuery, [item_id, user?.id]);
 
-    password = await hashPassword(password);
+      // Case 1: 아이디에 해당하는 글이 아예 없음
+      if (checkResult.rowCount === 0) {
+        return c.json({ error: "존재하지 않는 게시물입니다." }, 404);
+      }
 
-    const query = `
-      INSERT INTO t_user (
-        nickname, 
-        phone_number, 
-        addr, 
-        long, 
-        lat, 
-        geo_point,
-        username,
-        password
-      ) VALUES (
-        $1, 
-        $2, 
-        $3, 
-        $4, 
-        $5, 
-        ST_SetSRID(ST_MakePoint($4, $5), 4326),
-        $6,
-        $7
-      )
-      RETURNING *;
-    `;
-
-    // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
-    const values = [
-      nickname,
-      phone_number,
-      addr,
-      long,
-      lat,
-      username,
-      password,
-    ];
-
-    // 4. 실행
-    const dbresult = await db.query(query, values);
+      // Case 3: 통과 -> 여기서 Update 로직 수행
+      const updateQuery = `
+    UPDATE t_item 
+    SET category_id = $1, title = $2, content = $3, price = $4, updated_at = NOW()
+    WHERE id = $5
+  `;
+      await db.query(updateQuery, [
+        category_id,
+        title,
+        content,
+        price,
+        item_id,
+      ]);
+    } else {
+      // [2단계] item_id가 0이면 조회할 필요 없이 바로 Insert
+      const insertQuery = `
+    INSERT INTO t_item (category_id, user_id, title, content, price, created_at)
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    RETURNING id;
+  `;
+      const insertResult = await db.query(insertQuery, [
+        category_id,
+        user?.id,
+        title,
+        content,
+        price,
+      ]);
+      const newId = insertResult.rows[0].id;
+    }
 
     let uploadedUrls: string[] = [];
     let uploadResults: ImgBBUploadResult[] = [];
@@ -204,45 +200,8 @@ router.post("/upsert_item", async (c) => {
     if (uploadResults.length === 0 && files) {
       // 파일은 있었는데 결과가 비어있는 이상 케이스 등 처리
     }
-    if ((uploadedUrls?.length || 0) && (dbresult?.rows?.length || 0)) {
-      let dataId = dbresult?.rows[0]?.id || 0;
-      if (dataId) {
-        const query = `
-          UPDATE t_user SET
-            profile_img = $1,
-            updated_dt=NOW()
-          WHERE id=$2
-          RETURNING *;
-    `;
-
-        // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
-        const values = [uploadedUrls[0], dataId];
-
-        // 4. 실행
-        const dbresult2 = await db.query(query, values);
-      }
+    if (uploadedUrls?.length || 0) {
     }
-
-    const query3 = `
-          SELECT
-          u.id
-          ,u.nickname
-          ,u.phone_number
-          ,u.profile_img
-          ,u.addr
-          ,u.geo_point
-          ,u.long
-          ,u.lat
-          ,u.created_dt
-          ,u.updated_dt
-          ,u.username
-          FROM t_user as u
-          WHERE u.id = $1
-          ;
-    `;
-
-    // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
-    const values3 = [dbresult?.rows[0]?.id || 0];
 
     return c.json(result);
   } catch (error: any) {
