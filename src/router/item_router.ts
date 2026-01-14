@@ -6,9 +6,11 @@ import {
 } from "../types/types.js";
 import {
   comparePassword,
+  decryptData,
   encryptData,
   generateToken,
   hashPassword,
+  verifyToken,
 } from "../utils/utils.js";
 
 const router = new Hono<HonoEnv>();
@@ -34,10 +36,39 @@ router.get("/query_string", async (c) => {
 });
 
 /** 큰 데이터 받는 방법. 이거를 제일 많이 씀 */
-router.post("/register", async (c) => {
+router.post("/upsert_item", async (c) => {
   let result: ResultType = { success: true };
   try {
     const db = c.var.db;
+
+    // 1. 헤더에서 Authorization 값 가져오기
+    const authHeader = c.req.header("Authorization");
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      result.success = false;
+      result.msg = `!토큰이 없습니다.`;
+      return c.json(result);
+    }
+
+    // 2. "Bearer " 문자열 제거하고 순수 토큰만 추출
+    const token = authHeader.split(" ")[1];
+
+    // 3. JWT 검증 (utils.ts의 verifyToken 사용)
+    const payload: any = verifyToken(token);
+
+    if (!payload || !payload.data) {
+      result.success = false;
+      result.msg = `!유효하지 않은 토큰입니다.`;
+      return c.json(result);
+    }
+
+    // 4. 암호화된 데이터 복호화 (utils.ts의 decryptData 사용)
+    // payload 구조가 { data: encUser, iat:..., exp:... } 이므로 payload.data를 꺼냄
+    const decryptedString = decryptData(payload.data);
+
+    // 5. JSON 문자열을 객체로 변환
+    const user = JSON.parse(decryptedString);
+
     const body = await c.req.parseBody({ all: true });
 
     let files = body["files"];
@@ -212,78 +243,6 @@ router.post("/register", async (c) => {
 
     // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
     const values3 = [dbresult?.rows[0]?.id || 0];
-
-    // 4. 실행
-    let user: any = await db.query(query3, values3);
-    user = user?.rows[0] || {};
-    console.log(`user : `, user);
-    let encUser = encryptData(JSON.stringify(user));
-    console.log(`encUser : `, encUser);
-    let token = `Bearer ${generateToken({ data: encUser }, "999d")}`;
-    console.log(`token : `, token);
-    result.data = { userInfo: user, token: token };
-
-    return c.json(result);
-  } catch (error: any) {
-    result.success = false;
-    result.msg = `!server error. ${error?.message ?? ""}`;
-    return c.json(result);
-  }
-});
-
-router.post("/login", async (c) => {
-  let result: ResultType = { success: true };
-  try {
-    const db = c.var.db;
-    const body = await c.req.parseBody({ all: true });
-
-    let username = String(body["username"] || "");
-    username = username?.trim() || "";
-    let password = String(body["password"] || "");
-    password = password?.trim() || "";
-
-    const query3 = `
-          SELECT
-          u.id
-          ,u.nickname
-          ,u.phone_number
-          ,u.profile_img
-          ,u.addr
-          ,u.geo_point
-          ,u.long
-          ,u.lat
-          ,u.created_dt
-          ,u.updated_dt
-          ,u.username
-          ,u.password
-          FROM t_user as u
-          WHERE u.username = $1
-          ;
-    `;
-
-    // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
-    const values3 = [username];
-
-    // 4. 실행
-    let user: any = await db.query(query3, values3);
-    user = user?.rows[0] || {};
-    if (!user?.id) {
-      result.success = false;
-      result.msg = `!유저를 못찾았습니다`;
-      return c.json(result);
-    }
-
-    console.log(`user : `, user);
-    let passwordCompare = await comparePassword(password, user?.password || "");
-    if (!password) {
-      result.success = false;
-      result.msg = `!유저를 못찾았습니다`;
-      return c.json(result);
-    }
-
-    let encUser = encryptData(JSON.stringify(user));
-    let token = `Bearer ${generateToken({ data: encUser }, "999d")}`;
-    result.data = { userInfo: user, token: token };
 
     return c.json(result);
   } catch (error: any) {
