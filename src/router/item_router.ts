@@ -122,6 +122,7 @@ router.post("/upsert_item", async (c) => {
         price,
       ]);
       const newId = insertResult.rows[0].id;
+      item_id = newId;
     }
 
     let uploadedUrls: string[] = [];
@@ -203,6 +204,18 @@ router.post("/upsert_item", async (c) => {
       // 파일은 있었는데 결과가 비어있는 이상 케이스 등 처리
     }
     if (uploadedUrls?.length || 0) {
+    }
+
+    /* uploadedUrls 여기에 이미지 url 담겨 있음
+    이걸 t_item_img 에 추가 하세요
+     */
+    for (const e of uploadedUrls) {
+      const insertQuery = `
+    INSERT INTO t_item_img (item_id,img_url)
+    VALUES ($1, $2)
+    RETURNING id;
+  `;
+      const insertResult = await db.query(insertQuery, [item_id, e]);
     }
 
     return c.json(result);
