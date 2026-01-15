@@ -81,6 +81,8 @@ router.post("/upsert_item", async (c) => {
     content = content?.trim() || "";
     let price = Number(body["price"] || 0);
 
+    console.log(`files: `, files);
+
     // [1단계] item_id가 있다면(수정 모드라면), 먼저 DB 찔러서 확인
     if (item_id > 0) {
       const checkQuery = `SELECT * FROM t_item 
