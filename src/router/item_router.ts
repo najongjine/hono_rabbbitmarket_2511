@@ -35,6 +35,55 @@ router.get("/query_string", async (c) => {
   }
 });
 
+router.get("/get_item_by_id", async (c) => {
+  let result: ResultType = { success: true };
+  const db = c.var.db;
+  try {
+    let item_id = Number(c?.req?.query("item_id") || 0);
+    const updateQuery = `
+    SELECT 
+     i.id as item_id
+    ,i.user_id
+    ,i.category_id
+    ,c.name as category_name
+    ,i.title
+    ,i.content
+    ,i.price
+    ,i.status
+    ,i.addr
+    ,i.created_at
+    ,i.updated_at
+    ,ST_AsGeoJSON(geo_point)::json as geo_point
+    ,embedding::json as embedding
+    -- 2. 이미지를 JSON 배열로 변환 (핵심!)
+    , COALESCE(
+        json_agg(
+          json_build_object(
+            'img_id', img.id,
+            'url', img.img_url,
+            'created_dt', img.created_dt
+          )
+        ) FILTER (WHERE img.id IS NOT NULL), 
+        '[]'
+      ) as images
+    FROM t_items as i
+    LEFT JOIN t_category as c ON c.id=i.category_id
+    LEFT JOIN t_item_img as img ON img.item_id = i.id
+    WHERE id = $1
+    GROUP BY i.id, c.name;
+  `;
+    let _result: any = await db.query(updateQuery, [item_id]);
+    _result = _result?.rows || [];
+    result.data = _result;
+
+    return c.json(result);
+  } catch (error: any) {
+    result.success = false;
+    result.msg = `!server error. ${error?.message ?? ""}`;
+    return c.json(result);
+  }
+});
+
 /** 큰 데이터 받는 방법. 이거를 제일 많이 씀 */
 router.post("/upsert_item", async (c) => {
   let result: ResultType = { success: true };
