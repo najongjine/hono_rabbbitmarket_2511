@@ -54,7 +54,7 @@ router.get("/get_item_by_id", async (c) => {
     ,i.created_at
     ,i.updated_at
     ,ST_AsGeoJSON(geo_point)::json as geo_point
-    ,embedding::json as embedding
+    , (i.embedding::text)::json as embedding
     -- 2. 이미지를 JSON 배열로 변환 (핵심!)
     , COALESCE(
         json_agg(
@@ -66,14 +66,14 @@ router.get("/get_item_by_id", async (c) => {
         ) FILTER (WHERE img.id IS NOT NULL), 
         '[]'
       ) as images
-    FROM t_items as i
+    FROM t_item as i
     LEFT JOIN t_category as c ON c.id=i.category_id
     LEFT JOIN t_item_img as img ON img.item_id = i.id
-    WHERE id = $1
+    WHERE i.id = $1
     GROUP BY i.id, c.name;
   `;
     let _result: any = await db.query(updateQuery, [item_id]);
-    _result = _result?.rows || [];
+    _result = _result?.rows[0] || {};
     result.data = _result;
 
     return c.json(result);
@@ -253,6 +253,12 @@ router.post("/upsert_item", async (c) => {
       // 파일은 있었는데 결과가 비어있는 이상 케이스 등 처리
     }
     if (uploadedUrls?.length || 0) {
+      const deleteOldImgQuery = `
+    DELETE FROM t_item_img
+    WHERE item_id=$1
+    RETURNING *;
+  `;
+      const insertResult = await db.query(deleteOldImgQuery, [item_id]);
     }
 
     /* uploadedUrls 여기에 이미지 url 담겨 있음
