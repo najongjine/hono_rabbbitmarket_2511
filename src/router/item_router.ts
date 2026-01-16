@@ -84,6 +84,30 @@ router.get("/get_item_by_id", async (c) => {
   }
 });
 
+router.get("/get_categories", async (c) => {
+  let result: ResultType = { success: true };
+  const db = c.var.db;
+  try {
+    let item_id = Number(c?.req?.query("item_id") || 0);
+    const query = `
+    SELECT 
+    id
+    ,name
+    ,order_no
+    FROM t_category
+  `;
+    let _result: any = await db.query(query, []);
+    _result = _result?.rows || [];
+    result.data = _result;
+
+    return c.json(result);
+  } catch (error: any) {
+    result.success = false;
+    result.msg = `!server error. ${error?.message ?? ""}`;
+    return c.json(result);
+  }
+});
+
 /** 큰 데이터 받는 방법. 이거를 제일 많이 씀 */
 router.post("/upsert_item", async (c) => {
   let result: ResultType = { success: true };
@@ -159,9 +183,28 @@ router.post("/upsert_item", async (c) => {
     } else {
       // [2단계] item_id가 0이면 조회할 필요 없이 바로 Insert
       const insertQuery = `
-    INSERT INTO t_item (category_id, user_id, title, content, price, created_at)
-    VALUES ($1, $2, $3, $4, $5, NOW())
-    RETURNING id;
+    INSERT INTO t_item (
+          category_id, 
+          user_id, 
+          title, 
+          content, 
+          price, 
+          created_at, 
+          geo_point, 
+          addr
+        )
+        SELECT 
+          $1, 
+          $2, 
+          $3, 
+          $4, 
+          $5, 
+          NOW(), 
+          u.geo_point, -- t_user의 geo_point
+          u.addr       -- t_user의 addr (주소 텍스트도 같이 맞추는 것이 좋습니다)
+        FROM t_user u
+        WHERE u.id = $2
+        RETURNING id;
   `;
       const insertResult = await db.query(insertQuery, [
         category_id,
