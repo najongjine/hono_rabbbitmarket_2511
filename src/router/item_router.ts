@@ -154,9 +154,50 @@ router.post("/upsert_item", async (c) => {
     content = content?.trim() || "";
     let price = Number(body["price"] || 0);
 
-    console.log(`files: `, files);
+    // -----------------------------------------------------------
+    // [추가 로직] Embedding API 호출하여 벡터값 생성
+    // -----------------------------------------------------------
+    let embeddingVectorStr = null; // DB에 넣을 문자열 (예: "[-0.1, 0.5, ...]")
 
-    // [1단계] item_id가 있다면(수정 모드라면), 먼저 DB 찔러서 확인
+    if (title.length > 0) {
+      try {
+        const embedRes = await fetch(
+          "https://wildojisan-embeddinggemma-300m-fastapi.hf.space/make_text_embedding",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // API 스펙에 맞춰 documents 배열에 title을 담아 보냅니다.
+            body: JSON.stringify({
+              documents: [title],
+              query: title,
+            }),
+          }
+        );
+
+        const embedJson: any = await embedRes.json();
+        console.log(`embedJson: `, embedJson);
+
+        // 응답 구조: { success: true, data: [ [vector...] ], ... }
+        if (embedJson.success && embedJson.data && embedJson.data.length > 0) {
+          // 첫 번째 문서의 벡터를 가져옴
+          const vector = embedJson.data[0];
+          // DB 저장을 위해 JSON 문자열로 변환
+          embeddingVectorStr = JSON.stringify(vector);
+        } else {
+          console.error("Embedding API Error or Empty Data:", embedJson);
+        }
+      } catch (err) {
+        console.error("Embedding Fetch Error:", err);
+        // 에러 발생 시 일단 진행할지, 멈출지는 정책에 따라 결정 (여기선 로그만 찍고 진행)
+      }
+    }
+    // -----------------------------------------------------------
+    // Embedding API 호출하여 벡터값 생성 END
+    // -----------------------------------------------------------
+
+    // -----------------------------------------------------------
+    // DB 작업 시작
+    // -----------------------------------------------------------
     if (item_id > 0) {
       const checkQuery = `SELECT * FROM t_item 
       WHERE id = $1 AND user_id = $2`;
@@ -169,9 +210,14 @@ router.post("/upsert_item", async (c) => {
 
       // Case 3: 통과 -> 여기서 Update 로직 수행
       const updateQuery = `
-    UPDATE t_item 
-    SET category_id = $1, title = $2, content = $3, price = $4, updated_at = NOW()
-    WHERE id = $5
+        UPDATE t_item 
+        SET category_id = $1, 
+            title = $2, 
+            content = $3, 
+            price = $4, 
+            updated_at = NOW(),
+            embedding = $6::vector 
+        WHERE id = $5
   `;
       await db.query(updateQuery, [
         category_id,
@@ -179,6 +225,7 @@ router.post("/upsert_item", async (c) => {
         content,
         price,
         item_id,
+        embeddingVectorStr,
       ]);
     } else {
       // [2단계] item_id가 0이면 조회할 필요 없이 바로 Insert
@@ -191,7 +238,8 @@ router.post("/upsert_item", async (c) => {
           price, 
           created_at, 
           geo_point, 
-          addr
+          addr,
+          embedding
         )
         SELECT 
           $1, 
@@ -201,8 +249,9 @@ router.post("/upsert_item", async (c) => {
           $5, 
           NOW(), 
           u.geo_point, -- t_user의 geo_point
-          u.addr       -- t_user의 addr (주소 텍스트도 같이 맞추는 것이 좋습니다)
-        FROM t_user u
+          u.addr,       -- t_user의 addr 
+          $6::vector
+          FROM t_user u
         WHERE u.id = $2
         RETURNING id;
   `;
@@ -212,10 +261,14 @@ router.post("/upsert_item", async (c) => {
         title,
         content,
         price,
+        embeddingVectorStr,
       ]);
       const newId = insertResult.rows[0].id;
       item_id = newId;
     }
+    // -----------------------------------------------------------
+    // DB 작업 END
+    // -----------------------------------------------------------
 
     let uploadedUrls: string[] = [];
     let uploadResults: ImgBBUploadResult[] = [];
