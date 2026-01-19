@@ -35,6 +35,94 @@ router.get("/query_string", async (c) => {
   }
 });
 
+
+router.get("/get_items", async (c) => {
+  let result: ResultType = { success: true };
+  const db = c.var.db;
+  try {
+    // 1. 헤더에서 Authorization 값 가져오기
+    const authHeader = c.req.header("Authorization");
+    let user:any={}
+    try {
+      // 2. "Bearer " 문자열 제거하고 순수 토큰만 추출
+      const token = authHeader?.split(" ")[1]||"";
+
+      // 3. JWT 검증 (utils.ts의 verifyToken 사용)
+      const payload: any = verifyToken(token);
+
+      // 4. 암호화된 데이터 복호화 (utils.ts의 decryptData 사용)
+      // payload 구조가 { data: encUser, iat:..., exp:... } 이므로 payload.data를 꺼냄
+      const decryptedString = decryptData(payload.data);
+
+      // 5. JSON 문자열을 객체로 변환
+      user = JSON.parse(decryptedString);
+    } catch (error:any) {
+      user={}
+    }
+    
+    // 6. 유저 위치 정보 확인
+    const userLat = Number(user?.lat);
+    const userLong = Number(user?.long);
+    // 유효한 위치 정보인지 확인 (0도 유효한 좌표일 수 있으나 여기서는 0이면 없는 것으로 간주했던 기존 로직 유지/보완)
+    // 보통 0,0 은 바다 한가운데라 유저 위치로 잘 안나오긴 함.
+    const hasLocation = !isNaN(userLat) && !isNaN(userLong) && (userLat !== 0 || userLong !== 0);
+
+    const paramLat = hasLocation ? userLat : null;
+    const paramLong = hasLocation ? userLong : null;
+
+    const selectQuery = `
+      SELECT 
+       i.id as item_id
+      ,i.user_id
+      ,i.category_id
+      ,c.name as category_name
+      ,i.title
+      ,i.content
+      ,i.price
+      ,i.status
+      ,i.addr
+      ,i.created_at
+      ,i.updated_at
+      -- [수정 1] i.geo_point로 변경 (모호성 제거)
+      ,ST_AsGeoJSON(i.geo_point)::json as geo_point
+      , (i.embedding::text)::json as embedding
+      , u.addr as user_addr
+      , CASE 
+          WHEN $1::float8 IS NOT NULL AND $2::float8 IS NOT NULL 
+          -- [수정 2] 거리 계산에도 i.geo_point로 변경
+          THEN ST_DistanceSphere(i.geo_point, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+          ELSE NULL 
+        END as distance_m
+      , COALESCE(
+          json_agg(
+            json_build_object(
+              'img_id', img.id,
+              'url', img.img_url,
+              'created_dt', img.created_dt
+            )
+          ) FILTER (WHERE img.id IS NOT NULL), 
+          '[]'
+        ) as images
+      FROM t_item as i
+      LEFT JOIN t_category as c ON c.id=i.category_id
+      LEFT JOIN t_user as u ON u.id = i.user_id
+      LEFT JOIN t_item_img as img ON img.item_id = i.id
+      GROUP BY i.id, c.name, u.addr
+      ORDER BY distance_m ASC NULLS LAST, i.id DESC;
+    `;
+    
+    let _result: any = await db.query(selectQuery, [paramLong, paramLat]);
+    _result = _result?.rows || [];
+    result.data = _result;
+
+    return c.json(result);
+  } catch (error: any) {
+    result.success = false;
+    result.msg = `!server error. ${error?.message ?? ""}`;
+    return c.json(result);
+  }
+});
+
 router.get("/get_item_by_id", async (c) => {
   let result: ResultType = { success: true };
   const db = c.var.db;
