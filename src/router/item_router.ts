@@ -70,6 +70,10 @@ router.get("/get_items", async (c) => {
     const paramLat = hasLocation ? userLat : null;
     const paramLong = hasLocation ? userLong : null;
 
+    // [추가] 필터링 파라미터 파싱
+    const categoryId = Number(c.req.query("category_id") || 0);
+    const searchKeyword = String(c.req.query("search_keyword") || "").trim();
+
     const selectQuery = `
       SELECT 
        i.id as item_id
@@ -107,11 +111,15 @@ router.get("/get_items", async (c) => {
       LEFT JOIN t_category as c ON c.id=i.category_id
       LEFT JOIN t_user as u ON u.id = i.user_id
       LEFT JOIN t_item_img as img ON img.item_id = i.id
+      WHERE
+        (CASE WHEN $3::int4 = 0 THEN TRUE ELSE i.category_id = $3::int4 END)
+        AND
+        (CASE WHEN $4::text = '' THEN TRUE ELSE i.title LIKE '%' || $4::text || '%' END)
       GROUP BY i.id, c.name, u.addr
       ORDER BY distance_m ASC NULLS LAST, i.id DESC;
     `;
     
-    let _result: any = await db.query(selectQuery, [paramLong, paramLat]);
+    let _result: any = await db.query(selectQuery, [paramLong, paramLat, categoryId, searchKeyword]);
     _result = _result?.rows || [];
     result.data = _result;
 
