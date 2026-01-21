@@ -124,7 +124,7 @@ router.get("/get_user_by_token", async (c) => {
       result.msg = `!유저를 못찾았습니다`;
       return c.json(result);
     }
-
+    result.data=user;
     return c.json(result);
   } catch (error: any) {
     result.success = false;
