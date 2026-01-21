@@ -428,6 +428,8 @@ router.post("/update_user_geo", async (c) => {
 
     const body = await c.req.parseBody({ all: true });
 
+    let addr = String(body["addr"] || "");
+    addr = addr?.trim() || "";
     let long = Number(body["long"] || 0);
     let lat = Number(body["lat"] || 0);
 
@@ -435,13 +437,14 @@ router.post("/update_user_geo", async (c) => {
           UPDATE t_user SET
             long = $1,
             lat = $2,
+            addr = $3,
             updated_dt=NOW()
-          WHERE id=$3
+          WHERE id=$4
           RETURNING *;
     `;
 
     // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
-    const values = [long, lat, userInfo?.id || 0];
+    const values = [long, lat, addr, userInfo?.id || 0];
 
     // 4. 실행
     const dbresult2 = await db.query(query, values);
