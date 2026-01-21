@@ -393,4 +393,70 @@ router.post("/login", async (c) => {
   }
 });
 
+
+router.post("/update_user_geo", async (c) => {
+  let result: ResultType = { success: true };
+  try {
+    const db=c.var.db;
+    // 1. 헤더에서 Authorization 값 가져오기
+    const authHeader = c.req.header("Authorization");
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      result.success = false;
+      result.msg = `!토큰이 없습니다.`;
+      return c.json(result);
+    }
+
+    // 2. "Bearer " 문자열 제거하고 순수 토큰만 추출
+    let token = authHeader.split(" ")[1];
+
+    // 3. JWT 검증 (utils.ts의 verifyToken 사용)
+    const payload: any = verifyToken(token);
+
+    if (!payload || !payload.data) {
+      result.success = false;
+      result.msg = `!유효하지 않은 토큰입니다.`;
+      return c.json(result);
+    }
+
+    // 4. 암호화된 데이터 복호화 (utils.ts의 decryptData 사용)
+    // payload 구조가 { data: encUser, iat:..., exp:... } 이므로 payload.data를 꺼냄
+    const decryptedString = decryptData(payload.data);
+
+    // 5. JSON 문자열을 객체로 변환
+    const userInfo = JSON.parse(decryptedString);
+
+    const body = await c.req.parseBody({ all: true });
+
+    let long = Number(body["long"] || 0);
+    let lat = Number(body["lat"] || 0);
+
+    const query = `
+          UPDATE t_user SET
+            long = $1,
+            lat = $2,
+            updated_dt=NOW()
+          WHERE id=$3
+          RETURNING *;
+    `;
+
+    // 3. 파라미터 바인딩 ($1, $2... 순서 중요)
+    const values = [long, lat, userInfo?.id || 0];
+
+    // 4. 실행
+    const dbresult2 = await db.query(query, values);
+    let user = dbresult2.rows[0] || {};
+    let encUser = encryptData(JSON.stringify(user));
+    token = `Bearer ${generateToken({ data: encUser }, "999d")}`;
+    result.data = { userInfo: user, token: token };
+
+    return c.json(result);
+  } catch (error: any) {
+    result.success = false;
+    result.msg = `!server error. ${error?.message ?? ""}`;
+    return c.json(result);
+  }
+});
+
+
 export default router;
