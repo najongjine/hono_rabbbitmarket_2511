@@ -115,7 +115,7 @@ router.get("/get_items", async (c) => {
         (CASE WHEN $3::int4 = 0 THEN TRUE ELSE i.category_id = $3::int4 END)
         AND
         (CASE WHEN $4::text = '' THEN TRUE ELSE i.title LIKE '%' || $4::text || '%' END)
-      GROUP BY i.id, c.name, u.addr
+      GROUP BY i.id, c.name, u.addr, u.geo_point
       ORDER BY distance_m ASC NULLS LAST, i.id DESC;
     `;
     
