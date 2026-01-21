@@ -1,0 +1,27 @@
+(관련 테이블 스키마 이미지 올림)
+User uploaded image 1
+User uploaded image 2
+User uploaded image 3
+/get_user_by_token api 에서
+ const query3 = `
+          SELECT
+          u.id
+          ,u.nickname
+          ,u.phone_number
+          ,u.profile_img
+          ,u.addr
+          ,u.geo_point
+          ,u.long
+          ,u.lat
+          ,u.created_dt
+          ,u.updated_dt
+          ,u.username
+          ,u.password
+          FROM t_user as u
+          WHERE u.id = $1
+          ;
+    `;
+
+이걸 postgres coalcase  jsonargg? 그거 이용해서
+유저의 상품, 상품의 이미지들
+이렇게 가져오는 쿼리로 수정해줘
