@@ -87,14 +87,14 @@ router.get("/get_items", async (c) => {
       ,i.addr
       ,i.created_at
       ,i.updated_at
-      -- [수정 1] i.geo_point로 변경 (모호성 제거)
-      ,ST_AsGeoJSON(i.geo_point)::json as geo_point
+      -- [수정 1] u.geo_point로 변경 (유저 위치 사용)
+      ,ST_AsGeoJSON(u.geo_point)::json as geo_point
       , (i.embedding::text)::json as embedding
       , u.addr as user_addr
       , CASE 
           WHEN $1::float8 IS NOT NULL AND $2::float8 IS NOT NULL 
-          -- [수정 2] 거리 계산에도 i.geo_point로 변경
-          THEN ST_DistanceSphere(i.geo_point, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+          -- [수정 2] 거리 계산에도 u.geo_point로 변경
+          THEN ST_DistanceSphere(u.geo_point, ST_SetSRID(ST_MakePoint($1, $2), 4326))
           ELSE NULL 
         END as distance_m
       , COALESCE(
