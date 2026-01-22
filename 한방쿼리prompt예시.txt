@@ -25,3 +25,5 @@ User uploaded image 3
 이걸 postgres coalcase  jsonargg? 그거 이용해서
 유저의 상품, 상품의 이미지들
 이렇게 가져오는 쿼리로 수정해줘
+
+AI_SERVER="https://wildojisan-itloc2511-hf-python.hf.space"
