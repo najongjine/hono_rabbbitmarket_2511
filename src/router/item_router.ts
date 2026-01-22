@@ -35,17 +35,16 @@ router.get("/query_string", async (c) => {
   }
 });
 
-
 router.get("/get_items", async (c) => {
   let result: ResultType = { success: true };
   const db = c.var.db;
   try {
     // 1. 헤더에서 Authorization 값 가져오기
     const authHeader = c.req.header("Authorization");
-    let user:any={}
+    let user: any = {};
     try {
       // 2. "Bearer " 문자열 제거하고 순수 토큰만 추출
-      const token = authHeader?.split(" ")[1]||"";
+      const token = authHeader?.split(" ")[1] || "";
 
       // 3. JWT 검증 (utils.ts의 verifyToken 사용)
       const payload: any = verifyToken(token);
@@ -56,16 +55,17 @@ router.get("/get_items", async (c) => {
 
       // 5. JSON 문자열을 객체로 변환
       user = JSON.parse(decryptedString);
-    } catch (error:any) {
-      user={}
+    } catch (error: any) {
+      user = {};
     }
-    
+
     // 6. 유저 위치 정보 확인
     const userLat = Number(user?.lat);
     const userLong = Number(user?.long);
     // 유효한 위치 정보인지 확인 (0도 유효한 좌표일 수 있으나 여기서는 0이면 없는 것으로 간주했던 기존 로직 유지/보완)
     // 보통 0,0 은 바다 한가운데라 유저 위치로 잘 안나오긴 함.
-    const hasLocation = !isNaN(userLat) && !isNaN(userLong) && (userLat !== 0 || userLong !== 0);
+    const hasLocation =
+      !isNaN(userLat) && !isNaN(userLong) && (userLat !== 0 || userLong !== 0);
 
     const paramLat = hasLocation ? userLat : null;
     const paramLong = hasLocation ? userLong : null;
@@ -73,6 +73,47 @@ router.get("/get_items", async (c) => {
     // [추가] 필터링 파라미터 파싱
     const categoryId = Number(c.req.query("category_id") || 0);
     const searchKeyword = String(c.req.query("search_keyword") || "").trim();
+
+    // -----------------------------------------------------------
+    // [추가 로직] Embedding API 호출하여 벡터값 생성
+    // -----------------------------------------------------------
+    let embeddingVectorStr = null; // DB에 넣을 문자열 (예: "[-0.1, 0.5, ...]")
+
+    if (searchKeyword?.length > 0) {
+      try {
+        const embedRes = await fetch(
+          "https://wildojisan-embeddinggemma-300m-fastapi.hf.space/make_text_embedding",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // API 스펙에 맞춰 documents 배열에 title을 담아 보냅니다.
+            body: JSON.stringify({
+              documents: [searchKeyword],
+              query: searchKeyword,
+            }),
+          },
+        );
+
+        const embedJson: any = await embedRes.json();
+        console.log(`embedJson: `, embedJson);
+
+        // 응답 구조: { success: true, data: [ [vector...] ], ... }
+        if (embedJson.success && embedJson.data && embedJson.data.length > 0) {
+          // 첫 번째 문서의 벡터를 가져옴
+          const vector = embedJson.data[0];
+          // DB 저장을 위해 JSON 문자열로 변환
+          embeddingVectorStr = JSON.stringify(vector);
+        } else {
+          console.error("Embedding API Error or Empty Data:", embedJson);
+        }
+      } catch (err) {
+        console.error("Embedding Fetch Error:", err);
+        // 에러 발생 시 일단 진행할지, 멈출지는 정책에 따라 결정 (여기선 로그만 찍고 진행)
+      }
+    }
+    // -----------------------------------------------------------
+    // Embedding API 호출하여 벡터값 생성 END
+    // -----------------------------------------------------------
 
     const selectQuery = `
       SELECT 
@@ -118,8 +159,13 @@ router.get("/get_items", async (c) => {
       GROUP BY i.id, c.name, u.addr, u.geo_point
       ORDER BY distance_m ASC NULLS LAST, i.id DESC;
     `;
-    
-    let _result: any = await db.query(selectQuery, [paramLong, paramLat, categoryId, searchKeyword]);
+
+    let _result: any = await db.query(selectQuery, [
+      paramLong,
+      paramLat,
+      categoryId,
+      searchKeyword,
+    ]);
     _result = _result?.rows || [];
     result.data = _result;
 
@@ -267,7 +313,7 @@ router.post("/upsert_item", async (c) => {
               documents: [title],
               query: title,
             }),
-          }
+          },
         );
 
         const embedJson: any = await embedRes.json();
@@ -417,7 +463,7 @@ router.post("/upsert_item", async (c) => {
               error: String(error),
             };
           }
-        })
+        }),
       );
 
       // 성공한 URL만 따로 모으기 (필요 시)

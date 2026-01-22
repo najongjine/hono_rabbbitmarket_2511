@@ -1,0 +1,12 @@
+SELECT 
+    t.id, 
+    t.title, 
+    t.content,
+    -- 기준 아이템(ID=3)과의 코사인 유사도 (1 - 거리)
+    1 - (t.embedding <=> (SELECT embedding FROM t_item WHERE id = 13)) AS similarity
+FROM 
+    t_item t
+-- WHERE 절을 없애서 자기 자신도 결과에 포함시킵니다.
+ORDER BY 
+    similarity DESC
+LIMIT 10;
