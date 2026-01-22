@@ -26,4 +26,14 @@ User uploaded image 3
 유저의 상품, 상품의 이미지들
 이렇게 가져오는 쿼리로 수정해줘
 
+
+KAKAO_RESTAPI_KEY="59498ffaa12716e02333174a9e4bac54"
+KAKAO_JS_KEY="150e98e3bd883753e02d811c6dfa864c"
+KAKAO_APP_KEY="1101322b8b0555e2c3d8c3b4b23808ef"
+
+DATABASE_URL="postgresql://neondb_owner:npg_N6kvz4bhwHat@ep-wandering-pond-ahi1rkv8-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require"
+
 AI_SERVER="https://wildojisan-itloc2511-hf-python.hf.space"
+
+IMGBB_API_KEY="07c1e5d07ef4c497e700e5b7c0416269"
+JWT_SECRET="testjwt1234!@#$"
