@@ -1,0 +1,135 @@
+SELECT 
+    t.id, 
+    t.title, 
+    t.content,
+    -- 기준 아이템(ID=3)과의 코사인 유사도 (1 - 거리)
+    1 - (t.embedding <=> (SELECT embedding FROM t_item WHERE id = 16)) AS similarity
+FROM 
+    t_item t
+-- WHERE 절을 없애서 자기 자신도 결과에 포함시킵니다.
+ORDER BY 
+    similarity DESC
+LIMIT 10;
+
+
+
+16	5090 그래픽카드 (컴퓨터 부품)	"5090 그래픽카드 (컴퓨터 부품)
+
+중고 1년씀.
+
+살사람 선착순으로 사셈"	1
+17	메모리 32GB (컴퓨터 부품)	"메모리 16GB 팜
+
+요즘 시세에 이정도면 싼거임.
+
+나중에 가격 푹등하기전에 제테크 해두셈"	0.6398175573457755
+19	고양이 가져가실 구함	"길에서 주운 고양이인데 못키우겠음
+
+누군가 가져가주심 감사"	0.44107923965229356
+18	멍멍이 팜	"해외 출장이 많아져서 개를 못키우게됬음
+
+가져가실분 구함"	0.4352532702382481
+15	ㅇㅇ	ㅇㅇㅇ	0.41928738355636896
+13	test1	11	0.3632806106471287
+14	test2	tyest2	0.34813045417873845
+
+
+이렇게 나온다. 꽤 관찬은거 같아.
+-------
+
+ let embeddingVectorStr = null; // DB에 넣을 문자열 (예: "[-0.1, 0.5, ...]")
+
+    if (searchKeyword?.length > 0) {
+      try {
+        const embedRes = await fetch(
+          "https://wildojisan-embeddinggemma-300m-fastapi.hf.space/make_text_embedding",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // API 스펙에 맞춰 documents 배열에 title을 담아 보냅니다.
+            body: JSON.stringify({
+              documents: [searchKeyword],
+              query: searchKeyword,
+            }),
+          },
+        );
+
+        const embedJson: any = await embedRes.json();
+        console.log(`embedJson: `, embedJson);
+
+        // 응답 구조: { success: true, data: [ [vector...] ], ... }
+        if (embedJson.success && embedJson.data && embedJson.data.length > 0) {
+          // 첫 번째 문서의 벡터를 가져옴
+          const vector = embedJson.data[0];
+          // DB 저장을 위해 JSON 문자열로 변환
+          embeddingVectorStr = JSON.stringify(vector);
+        } else {
+          console.error("Embedding API Error or Empty Data:", embedJson);
+        }
+      } catch (err) {
+        console.error("Embedding Fetch Error:", err);
+        // 에러 발생 시 일단 진행할지, 멈출지는 정책에 따라 결정 (여기선 로그만 찍고 진행)
+      }
+    }
+    // -----------------------------------------------------------
+    // Embedding API 호출하여 벡터값 생성 END
+    // -----------------------------------------------------------
+
+const selectQuery = `
+      SELECT 
+       i.id as item_id
+      ,i.user_id
+      ,i.category_id
+      ,c.name as category_name
+      ,i.title
+      ,i.content
+      ,i.price
+      ,i.status
+      ,i.addr
+      ,i.created_at
+      ,i.updated_at
+      -- [수정 1] u.geo_point로 변경 (유저 위치 사용)
+      ,ST_AsGeoJSON(u.geo_point)::json as geo_point
+      , (i.embedding::text)::json as embedding
+      , u.addr as user_addr
+      , CASE 
+          WHEN $1::float8 IS NOT NULL AND $2::float8 IS NOT NULL 
+          -- [수정 2] 거리 계산에도 u.geo_point로 변경
+          THEN ST_DistanceSphere(u.geo_point, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+          ELSE NULL 
+        END as distance_m
+      , COALESCE(
+          json_agg(
+            json_build_object(
+              'img_id', img.id,
+              'url', img.img_url,
+              'created_dt', img.created_dt
+            )
+          ) FILTER (WHERE img.id IS NOT NULL), 
+          '[]'
+        ) as images
+      FROM t_item as i
+      LEFT JOIN t_category as c ON c.id=i.category_id
+      LEFT JOIN t_user as u ON u.id = i.user_id
+      LEFT JOIN t_item_img as img ON img.item_id = i.id
+      WHERE
+        (CASE WHEN $3::int4 = 0 THEN TRUE ELSE i.category_id = $3::int4 END)
+        AND
+        (CASE WHEN $4::text = '' THEN TRUE ELSE i.title LIKE '%' || $4::text || '%' END)
+      GROUP BY i.id, c.name, u.addr, u.geo_point
+      ORDER BY distance_m ASC NULLS LAST, i.id DESC;
+    `;
+
+    let _result: any = await db.query(selectQuery, [
+      paramLong,
+      paramLat,
+      categoryId,
+      searchKeyword,
+    ]);
+
+이건 nodejs hono typescript 에서 vercel neon에 있는
+postgres DB 쌩쿼리 코드야.
+
+embeddingVectorStr 이건 검색어를 embedding 시킨거야.
+
+이제 니가 기존 쿼리에서 semantic 검색을 추가 시켜줘.
