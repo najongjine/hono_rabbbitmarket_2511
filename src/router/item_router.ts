@@ -105,66 +105,103 @@ router.get("/get_items", async (c) => {
           embeddingVectorStr = JSON.stringify(vector);
         } else {
           console.error("Embedding API Error or Empty Data:", embedJson);
+          embeddingVectorStr = null;
         }
-      } catch (err) {
-        console.error("Embedding Fetch Error:", err);
+      } catch (err: any) {
+        console.error("Embedding Fetch Error:", err?.message);
+        embeddingVectorStr = null;
         // 에러 발생 시 일단 진행할지, 멈출지는 정책에 따라 결정 (여기선 로그만 찍고 진행)
       }
     }
+    console.log(`#get items/ embeddingVectorStr: `, embeddingVectorStr);
     // -----------------------------------------------------------
     // Embedding API 호출하여 벡터값 생성 END
     // -----------------------------------------------------------
 
     const selectQuery = `
       SELECT 
-       i.id as item_id
-      ,i.user_id
-      ,i.category_id
-      ,c.name as category_name
-      ,i.title
-      ,i.content
-      ,i.price
-      ,i.status
-      ,i.addr
-      ,i.created_at
-      ,i.updated_at
-      -- [수정 1] u.geo_point로 변경 (유저 위치 사용)
-      ,ST_AsGeoJSON(u.geo_point)::json as geo_point
-      , (i.embedding::text)::json as embedding
-      , u.addr as user_addr
-      , CASE 
-          WHEN $1::float8 IS NOT NULL AND $2::float8 IS NOT NULL 
-          -- [수정 2] 거리 계산에도 u.geo_point로 변경
-          THEN ST_DistanceSphere(u.geo_point, ST_SetSRID(ST_MakePoint($1, $2), 4326))
-          ELSE NULL 
-        END as distance_m
-      , COALESCE(
-          json_agg(
-            json_build_object(
-              'img_id', img.id,
-              'url', img.img_url,
-              'created_dt', img.created_dt
-            )
-          ) FILTER (WHERE img.id IS NOT NULL), 
-          '[]'
-        ) as images
+        i.id as item_id
+       ,i.user_id
+       ,i.category_id
+       ,c.name as category_name
+       ,i.title
+       ,i.content
+       ,i.price
+       ,i.status
+       ,i.addr
+       ,i.created_at
+       ,i.updated_at
+       ,ST_AsGeoJSON(u.geo_point)::json as geo_point
+       , (i.embedding::text)::json as embedding
+       , u.addr as user_addr
+       
+       , CASE 
+           WHEN $1::float8 IS NOT NULL AND $2::float8 IS NOT NULL 
+           THEN ST_DistanceSphere(u.geo_point, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+           ELSE NULL 
+         END as distance_m
+
+       -- [유사도 점수 계산 (화면 표시용)]
+       , CASE
+           WHEN $5::text IS NOT NULL 
+           THEN 1 - (i.embedding <=> ($5::text)::vector)
+           ELSE 0
+         END as similarity
+
+       , COALESCE(
+           json_agg(
+             json_build_object(
+               'img_id', img.id,
+               'url', img.img_url,
+               'created_dt', img.created_dt
+             )
+           ) FILTER (WHERE img.id IS NOT NULL), 
+           '[]'
+         ) as images
       FROM t_item as i
       LEFT JOIN t_category as c ON c.id=i.category_id
       LEFT JOIN t_user as u ON u.id = i.user_id
       LEFT JOIN t_item_img as img ON img.item_id = i.id
+      
+      -- ▼▼▼ 여기가 문제였던 부분입니다. 이렇게 고치세요 ▼▼▼
       WHERE
         (CASE WHEN $3::int4 = 0 THEN TRUE ELSE i.category_id = $3::int4 END)
         AND
-        (CASE WHEN $4::text = '' THEN TRUE ELSE i.title LIKE '%' || $4::text || '%' END)
+        (
+           -- 검색어가 없을 때는 무조건 통과
+           $4::text = ''
+           OR
+           (
+             -- 1. 제목에 글자가 정확히 포함되어 있거나 (기존 LIKE 검색)
+             i.title LIKE '%' || $4::text || '%'
+             
+             OR
+             
+             -- 2. [추가] 글자가 달라도, 의미 유사도가 특정 점수(예: 0.4) 이상이면 통과!
+             ( 
+               $5::text IS NOT NULL 
+               AND 
+               (1 - (i.embedding <=> ($5::text)::vector)) > 0.4 
+             )
+           )
+        )
+      -- ▲▲▲ 수정 끝 ▲▲▲
+
       GROUP BY i.id, c.name, u.addr, u.geo_point
-      ORDER BY distance_m ASC NULLS LAST, i.id DESC;
+      
+      ORDER BY 
+        similarity DESC,
+        distance_m ASC NULLS LAST,
+        i.id DESC;
     `;
 
+    // 파라미터 배열에 embeddingVectorStr 추가 ($5)
     let _result: any = await db.query(selectQuery, [
-      paramLong,
-      paramLat,
-      categoryId,
-      searchKeyword,
+      paramLong, // $1
+      paramLat, // $2
+      categoryId, // $3
+      searchKeyword, // $4
+      embeddingVectorStr, // $5 (JSON 문자열 형태, 예: "[-0.1, 0.5, ...]" 혹은 null)
     ]);
     _result = _result?.rows || [];
     result.data = _result;
