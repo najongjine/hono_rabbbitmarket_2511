@@ -651,6 +651,7 @@ router.post("/gemini_auto_item_desc", async (c) => {
             title: { type: SchemaType.STRING },
             content: { type: SchemaType.STRING },
             category_id: { type: SchemaType.NUMBER },
+            price: { type: SchemaType.NUMBER },
           },
         },
       },
@@ -659,7 +660,7 @@ router.post("/gemini_auto_item_desc", async (c) => {
     // 10. 프롬프트 작성
     const prompt = `
       너는 전문 쇼핑몰 판매자야. 
-      사용자가 업로드한 이미지를 분석해서 상품 제목, 판매용 설명(content), 그리고 가장 적절한 카테고리 ID를 추천해줘.
+      사용자가 업로드한 이미지를 분석해서 상품 제목, 판매용 설명(content), 가격(price), 그리고 가장 적절한 카테고리 ID를 추천해줘.
       
       [카테고리 목록]
       ${categoryPromptList}
@@ -668,6 +669,7 @@ router.post("/gemini_auto_item_desc", async (c) => {
       1. 위 [카테고리 목록]에 있는 ID 중 이미지와 가장 잘 어울리는 것 하나를 선택해서 'category_id'에 숫자만 넣어줘.
       2. 'title'은 상품을 매력적으로 표현하는 짧은 제목이야.
       3. 'content'는 3~10줄 내외로 작성하고, 유머러스하고 친근한 톤(예: "ㅎㅎ", "사주셈" 같은 말투 포함)으로 작성해줘.
+      4. 'price'는 니가 적절한 임의의 중고 가격으로 정해줘. 니가 인식한 상품의 적절한 중고 가격으로 정하면 되.
       4. 응답은 반드시 JSON 형식이어야 해.
     `;
 
