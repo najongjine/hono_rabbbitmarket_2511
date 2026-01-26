@@ -639,11 +639,6 @@ router.post("/gemini_auto_item_desc", async (c) => {
     // 8. 이미지를 Base64로 변환
     const arrayBuffer = await file.arrayBuffer();
     const base64Image = Buffer.from(arrayBuffer).toString("base64");
-    const apiKey = process.env.GEMINI_API_KEY;
-    console.log(`apiKey: `, apiKey);
-    if (!apiKey) {
-      console.error("!!! API KEY가 없습니다. .env 파일을 확인하세요 !!!");
-    }
 
     // 9. Gemini 모델 설정 (JSON 모드 사용)
     const model = genAI.getGenerativeModel({
