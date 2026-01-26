@@ -13,11 +13,23 @@ import {
   verifyToken,
 } from "../utils/utils.js";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import * as dotenv from "dotenv";
 
 const router = new Hono<HonoEnv>();
 
-// Gemini 클라이언트 초기화 (환경변수에서 키를 가져오세요)
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const envFile =
+  process.env.NODE_ENV === "production"
+    ? ".env.production"
+    : ".env.development";
+dotenv.config({ path: envFile });
+const apiKey = process.env.GEMINI_API_KEY || "";
+console.log("---------------------------------------------------");
+console.log(
+  "GEMINI API KEY 확인:",
+  apiKey ? "키가 존재합니다 (OK)" : "!!! 키가 없습니다 (NULL) !!!",
+);
+console.log("---------------------------------------------------");
+const genAI = new GoogleGenerativeAI(apiKey);
 
 interface ResultType {
   success?: boolean;
@@ -627,6 +639,11 @@ router.post("/gemini_auto_item_desc", async (c) => {
     // 8. 이미지를 Base64로 변환
     const arrayBuffer = await file.arrayBuffer();
     const base64Image = Buffer.from(arrayBuffer).toString("base64");
+    const apiKey = process.env.GEMINI_API_KEY;
+    console.log(`apiKey: `, apiKey);
+    if (!apiKey) {
+      console.error("!!! API KEY가 없습니다. .env 파일을 확인하세요 !!!");
+    }
 
     // 9. Gemini 모델 설정 (JSON 모드 사용)
     const model = genAI.getGenerativeModel({
