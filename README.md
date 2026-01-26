@@ -1,6 +1,8 @@
 ```
 npm install
 npm run dev
+
+npm install @google/generative-ai
 ```
 
 npm i cross-env
