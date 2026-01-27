@@ -700,4 +700,79 @@ router.post("/gemini_auto_item_desc", async (c) => {
   }
 });
 
+
+router.post("/delete_item_by_id", async (c) => {
+  let result: ResultType = { success: true };
+  try {
+    const db = c.var.db;
+
+    // 1. 헤더에서 Authorization 값 가져오기
+    const authHeader = c.req.header("Authorization");
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      result.success = false;
+      result.msg = `!토큰이 없습니다.`;
+      return c.json(result);
+    }
+
+    // 2. "Bearer " 문자열 제거하고 순수 토큰만 추출
+    const token = authHeader.split(" ")[1];
+
+    // 3. JWT 검증 (utils.ts의 verifyToken 사용)
+    const payload: any = verifyToken(token);
+
+    if (!payload || !payload.data) {
+      result.success = false;
+      result.msg = `!유효하지 않은 토큰입니다.`;
+      return c.json(result);
+    }
+
+    // 4. 암호화된 데이터 복호화 (utils.ts의 decryptData 사용)
+    // payload 구조가 { data: encUser, iat:..., exp:... } 이므로 payload.data를 꺼냄
+    const decryptedString = decryptData(payload.data);
+
+    // 5. JSON 문자열을 객체로 변환
+    const user = JSON.parse(decryptedString);
+
+    const body = await c.req.parseBody({ all: true });
+
+    let id = Number(body["id"] || 0);
+    if (id <= 0) {
+      result.success = false;
+      result.msg = "!잘못된 요청입니다.";
+      return c.json(result);
+    }
+
+    const selquery = `
+      SELECT * FROM t_item
+      WHERE id = $1;
+    `;
+
+    const values = [id];
+
+    const seldbresult = await db.query(selquery, values);
+    const item = seldbresult?.rows[0]||{};
+    if (!item?.user_id || item?.user_id !== user.id) {
+      result.success = false;
+      result.msg = "!존재하지 않는 상품이거나 권한이 없습니다.";
+      return c.json(result);
+    }
+
+    const delquery = `
+      DELETE FROM t_item
+      WHERE id = $1;
+    `;
+
+    const values2 = [id];
+
+    const deldbresult = await db.query(delquery, values2);
+
+    return c.json(result);
+  } catch (error: any) {
+    result.success = false;
+    result.msg = `!server error. ${error?.message ?? ""}`;
+    return c.json(result);
+  }
+});
+
 export default router;
