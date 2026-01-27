@@ -717,6 +717,7 @@ router.post("/delete_item_by_id", async (c) => {
 
     // 2. "Bearer " 문자열 제거하고 순수 토큰만 추출
     const token = authHeader.split(" ")[1];
+    console.log(`token: `, token);
 
     // 3. JWT 검증 (utils.ts의 verifyToken 사용)
     const payload: any = verifyToken(token);
