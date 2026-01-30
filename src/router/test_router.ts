@@ -1,5 +1,7 @@
 import { Hono } from "hono";
-import { HonoEnv } from "../types/types.js";
+import { HonoEnv, ImgBBUploadResult } from "../types/types.js";
+import crypto from "crypto";
+import { error } from "console";
 
 const router = new Hono<HonoEnv>();
 
@@ -169,6 +171,160 @@ router.post("/db_post_test", async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error(error);
+    result.success = false;
+    result.msg = `!server error. ${error?.message ?? ""}`;
+    return c.json(result);
+  }
+});
+
+
+/** 큰 데이터 받는 방법. 이거를 제일 많이 씀 */
+router.post("/imgembed_upload", async (c) => {
+  let result: ResultType = { success: true };
+  try {
+    const db = c.var.db;
+
+    
+
+    const body = await c.req.parseBody({ all: true });
+
+    let files = body["files"];
+
+
+    const IMGBB_API_KEY = String(process?.env?.IMGBB_API_KEY || "");
+    
+    // 파일 배열 정규화
+    let fileList: any[] = [];
+    if (files) {
+      if (Array.isArray(files)) {
+        fileList = files;
+      } else {
+        fileList = [files];
+      }
+    }
+
+    // 1. 초기 자료구조 구축: { originalname, encname, file, imgurl }
+    // encname은 미리 생성 (UUID 조합)
+    let processItems = fileList.map((f) => ({
+      originalname: f.name,
+      encname: `${crypto.randomUUID()}_${f?.name?.substring(0, 10)||""}`,
+      file: f,
+      imgurl: null as string | null,
+      embedding: null as string | null, // 추가
+    }));
+
+    // 2. 임베딩 추출 (병렬 처리 가능하지만, 서버 부하 고려하여 여기서 호출)
+    // 10분 타임아웃 설정
+
+    try {
+      const embedFormData = new FormData();
+      for (const item of processItems) {
+        // [중요] encname을 파일명으로 전달하여 나중에 매칭할 수 있게 함
+        embedFormData.append("files", item.file, item.encname);
+      }
+
+      console.log("Calling embedding API...");
+      const embedRes = await fetch(
+        "http://127.0.0.1:8000/api/cnn/extract_features",
+        {
+          method: "POST",
+          body: embedFormData,
+          // @ts-ignore
+          signal: AbortSignal.timeout(600000), // 10분
+        }
+      );
+
+      const embedJson: any = await embedRes.json();
+      console.log("Embedding API Result:", embedJson);
+
+      if (embedJson?.success && Array.isArray(embedJson.data)) {
+        // 응답 데이터 매칭 (encname 기준)
+        for (const dataItem of embedJson.data) {
+          const matchItem = processItems.find(
+            (p) => p.encname === dataItem.key
+          );
+          if (matchItem) {
+            // DB 저장을 위해 벡터를 JSON 문자열로 변환 (vector 타입이면 그대로 배열도 가능하지만, 로직상 stringify)
+            // t_imgembed_test 테이블의 embedding 컬럼 타입이 vector인 경우:
+            // pgvector는 '[1,2,3]' 문자열 포맷을 잘 받음.
+            matchItem.embedding = JSON.stringify(dataItem.embedding);
+          }
+        }
+      } else {
+        result.success = false;
+        result.msg = `! ai server error. ${embedJson?.msg||""}.`;
+        return c.json(result);
+      }
+    } catch (err:any) {
+      result.success = false;
+        result.msg = `! ai server fetch error. ${err?.message||""}.`;
+        return c.json(result);
+    }
+
+    // 3. ImgBB 업로드 진행 (병렬 처리)
+    await Promise.all(
+      processItems.map(async (item) => {
+        try {
+          const arrayBuffer = await item.file.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          const base64Image = buffer.toString("base64");
+
+          const formData = new FormData();
+          formData.append("key", IMGBB_API_KEY);
+          formData.append("image", base64Image);
+          // 업로드 시 이름은 encname을 사용하거나 originalname 사용 가능. 
+          // 여기선 encname 사용 (Unique)
+          formData.append("name", item.encname);
+
+          const response = await fetch("https://api.imgbb.com/1/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          const resJson: any = await response.json();
+
+          if (resJson.success) {
+            item.imgurl = resJson.data.url;
+          } else {
+            console.error(
+              `ImgBB Upload Error for ${item.originalname}:`,
+              resJson
+            );
+          }
+        } catch (error) {
+          console.error(`Network Error for ${item.originalname}:`, error);
+        }
+      })
+    );
+
+    // 3. DB Insert (성공적으로 imgurl이 생성된 항목만)
+    for (const item of processItems) {
+      if (item.imgurl) {
+        try {
+          // embedding은 현재 없음(NULL) -> 이제 있음!
+          await db.query(
+            `INSERT INTO t_imgembed_test 
+             (encname, originalname, embedding, imgurl, created_at)
+             VALUES ($1, $2, $3::vector, $4, NOW())`,
+            [item.encname, item.originalname, item.embedding, item.imgurl]
+          );
+        } catch (dbError) {
+          console.error(`DB Insert Error for ${item.encname}:`, dbError);
+        }
+      }
+    }
+
+    result.data = {
+      processed: processItems.map(p => ({
+        originalname: p.originalname,
+        encname: p.encname,
+        imgurl: p.imgurl,
+        success: !!p.imgurl
+      }))
+    };
+
+    return c.json(result);
+  } catch (error: any) {
     result.success = false;
     result.msg = `!server error. ${error?.message ?? ""}`;
     return c.json(result);
