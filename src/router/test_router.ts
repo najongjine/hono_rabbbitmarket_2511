@@ -178,7 +178,6 @@ router.post("/db_post_test", async (c) => {
 });
 
 
-/** 큰 데이터 받는 방법. 이거를 제일 많이 씀 */
 router.post("/imgembed_upload", async (c) => {
   let result: ResultType = { success: true };
   try {
@@ -225,7 +224,7 @@ router.post("/imgembed_upload", async (c) => {
 
       console.log("Calling embedding API...");
       const embedRes = await fetch(
-        "http://127.0.0.1:8000/api/cnn/extract_features",
+        "https://wildojisan-embeddinggemma-300m-fastapi.hf.space/api/cnn/extract_features",
         {
           method: "POST",
           body: embedFormData,
@@ -322,6 +321,127 @@ router.post("/imgembed_upload", async (c) => {
         success: !!p.imgurl
       }))
     };
+
+    return c.json(result);
+  } catch (error: any) {
+    result.success = false;
+    result.msg = `!server error. ${error?.message ?? ""}`;
+    return c.json(result);
+  }
+});
+
+router.post("/img_search", async (c) => {
+  let result: ResultType = { success: true };
+  try {
+    const db = c.var.db;
+
+    
+
+    const body = await c.req.parseBody({ all: true });
+
+    let files = body["files"];
+
+
+    const IMGBB_API_KEY = String(process?.env?.IMGBB_API_KEY || "");
+    
+    // 파일 배열 정규화
+    let fileList: any[] = [];
+    if (files) {
+      if (Array.isArray(files)) {
+        fileList = files;
+      } else {
+        fileList = [files];
+      }
+    }
+
+    // 1. 초기 자료구조 구축: { originalname, encname, file, imgurl }
+    // encname은 미리 생성 (UUID 조합)
+    let processItems = fileList.map((f) => ({
+      originalname: f.name,
+      encname: `${crypto.randomUUID()}_${f?.name?.substring(0, 10)||""}`,
+      file: f,
+      imgurl: null as string | null,
+      embedding: null as string | null, // 추가
+    }));
+
+    // 2. 임베딩 추출 (병렬 처리 가능하지만, 서버 부하 고려하여 여기서 호출)
+    // 10분 타임아웃 설정
+
+    try {
+      const embedFormData = new FormData();
+      for (const item of processItems) {
+        // [중요] encname을 파일명으로 전달하여 나중에 매칭할 수 있게 함
+        embedFormData.append("files", item.file, item.encname);
+      }
+
+      console.log("Calling embedding API...");
+      const embedRes = await fetch(
+        "https://wildojisan-embeddinggemma-300m-fastapi.hf.space/api/cnn/extract_features",
+        {
+          method: "POST",
+          body: embedFormData,
+          // @ts-ignore
+          signal: AbortSignal.timeout(600000), // 10분
+        }
+      );
+
+      const embedJson: any = await embedRes.json();
+      console.log("Embedding API Result:", embedJson);
+
+      if (embedJson?.success && Array.isArray(embedJson.data)) {
+        // 응답 데이터 매칭 (encname 기준)
+        for (const dataItem of embedJson.data) {
+          const matchItem = processItems.find(
+            (p) => p.encname === dataItem.key
+          );
+          if (matchItem) {
+            // DB 저장을 위해 벡터를 JSON 문자열로 변환 (vector 타입이면 그대로 배열도 가능하지만, 로직상 stringify)
+            // t_imgembed_test 테이블의 embedding 컬럼 타입이 vector인 경우:
+            // pgvector는 '[1,2,3]' 문자열 포맷을 잘 받음.
+            matchItem.embedding = JSON.stringify(dataItem.embedding);
+          }
+        }
+      } else {
+        result.success = false;
+        result.msg = `! ai server error. ${embedJson?.msg||""}.`;
+        return c.json(result);
+      }
+    } catch (err:any) {
+      result.success = false;
+        result.msg = `! ai server fetch error. ${err?.message||""}.`;
+        return c.json(result);
+    }
+
+
+
+    // 3. DB 검색 (Cosine Distance)
+    // processItems[0]의 embedding을 사용하여 검색
+    const searchItem = processItems[0];
+    if (searchItem && searchItem.embedding) {
+        const query = `
+            SELECT id, encname, originalname, imgurl, created_at,
+                   1 - (embedding <=> $1) as similarity
+            FROM t_imgembed_test
+            ORDER BY similarity DESC
+            LIMIT 20
+        `;
+        const searchRes = await db.query(query, [searchItem.embedding]);
+        
+        result.data = searchRes.rows.map((row: any) => ({
+            id: row.id,
+            encname: row.encname,
+            originalname: row.originalname,
+            imgurl: row.imgurl,
+            created_at: row.created_at,
+            similarity: row.similarity
+        }));
+    } else {
+         // 임베딩 추출 실패 시 메시지 처리 (이미 위에서 catch나 else로 잡힐 수도 있지만 안전장치)
+         if (result.success) { // 위에서 에러가 안났는데 여기까지 왔다면
+             result.success = false;
+             result.msg = "Failed to extract embedding or no file provided.";
+         }
+    }
 
     return c.json(result);
   } catch (error: any) {
